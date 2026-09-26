@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SoCraTes Linz – Film Preview</title>
+  <link rel="icon" href="data:," />
+  <style>
+    :root { --bg: #16161c; --fg: #eee; --muted: #999; --accent: #ff4f9a; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 -apple-system, system-ui, sans-serif;
+           display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
+    canvas { width: min(92vw, calc(100vh - 140px)); aspect-ratio: 1; background: #f1ebdd; border-radius: 4px; }
+    .bar { display: flex; gap: 10px; align-items: center; width: min(92vw, calc(100vh - 140px)); flex-wrap: wrap; }
+    input[type=range] { flex: 1; accent-color: var(--accent); }
+    button, select { background: #2a2a33; color: var(--fg); border: 1px solid #444; border-radius: 4px; padding: 5px 10px; font: inherit; }
+    .info { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 260px; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="bar">
+    <button id="play">▶ play</button>
+    <input id="scrub" type="range" min="0" value="0" step="1" />
+    <select id="scene"></select>
+  </div>
+  <div class="bar"><span class="info" id="info">loading…</span>
+    <span class="info">space: play/pause · ←/→: one frame · shift+←/→: one beat</span></div>
+
+  <script type="module">
+    import { createEngine } from './src/engine.js';
+    import { scenes as timeline } from './src/timeline.js';
+    const params = new URLSearchParams(location.search);
+    const only = params.get('scene') || undefined;
+    const engine = await createEngine(document.getElementById('c'), { only });
+    // Headless renderer hooks.
+    window.__engine = engine;
+    if (params.has('headless')) { window.__ready = true; throw 'headless'; }
+
+    const { fps, bpm, beatsPerBar } = engine.config;
+    const framesPerBeat = (fps * 60) / bpm;
+    const $ = (id) => document.getElementById(id);
+    const scrub = $('scrub'), info = $('info'), playBtn = $('play'), sel = $('scene');
+    scrub.max = engine.totalFrames - 1;
+
+    sel.innerHTML = `<option value="">whole film</option>` +
+      timeline.map(({ file }) => file.replace(/\.js$/, '')).map((id) => `<option value="${id}">${id}</option>`).join('');
+    sel.value = only ?? '';
+    sel.onchange = () => { location.search = sel.value ? `?scene=${sel.value}` : ''; };
+
+    // Soundtrack: music/soundtrack.wav (if present) drives the clock, so preview is in sync.
+    const audio = new Audio('music/soundtrack.wav');
+    let hasAudio = false;
+    audio.addEventListener('canplaythrough', () => { hasAudio = true; }, { once: true });
+    audio.addEventListener('error', () => { hasAudio = false; });
+    const sceneStartSec = only ? await sceneStartInFilm(only) : 0;
+
+    async function sceneStartInFilm(id) {
+      // Where this scene sits in the full film, so the music lines up in single-scene preview.
+      const full = await createEngine(document.createElement('canvas'));
+      return full.frameOfScene(id) / fps;
+    }
+
+    let frame = 0, playing = false, t0 = 0;
+    function show(n) {
+      frame = Math.max(0, Math.min(engine.totalFrames - 1, n));
+      const { scene, local } = engine.renderFrame(frame);
+      scrub.value = frame;
+      const beat = local / framesPerBeat;
+      info.textContent = `frame ${frame}/${engine.totalFrames - 1} · ${(frame / fps).toFixed(2)}s · ` +
+        `${scene} bar ${Math.floor(beat / beatsPerBar) + 1} beat ${Math.floor(beat % beatsPerBar) + 1}` +
+        (hasAudio ? ' · ♪' : ' · (no music/soundtrack.wav)');
+    }
+    function tick() {
+      if (!playing) return;
+      const sec = hasAudio ? audio.currentTime - sceneStartSec : (performance.now() - t0) / 1000;
+      const n = Math.floor(sec * fps);
+      if (n >= engine.totalFrames) { stop(); show(0); return; }
+      show(n);
+      requestAnimationFrame(tick);
+    }
+    function play() {
+      playing = true; playBtn.textContent = '❚❚ pause';
+      t0 = performance.now() - (frame / fps) * 1000;
+      if (hasAudio) { audio.currentTime = sceneStartSec + frame / fps; audio.play(); }
+      tick();
+    }
+    function stop() { playing = false; playBtn.textContent = '▶ play'; audio.pause(); }
+    playBtn.onclick = () => (playing ? stop() : play());
+    scrub.oninput = () => { stop(); show(+scrub.value); };
+    addEventListener('keydown', (e) => {
+      if (e.code === 'Space') { e.preventDefault(); playing ? stop() : play(); }
+      const step = e.shiftKey ? Math.round(framesPerBeat) : 1;
+      if (e.code === 'ArrowRight') { stop(); show(frame + step); }
+      if (e.code === 'ArrowLeft') { stop(); show(frame - step); }
+    });
+    show(0);
+  </script>
+</body>
+</html>

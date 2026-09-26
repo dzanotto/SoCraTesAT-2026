@@ -1,0 +1,16 @@
+{
+  "name": "socrates-audiovisual-experiences",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Collaborative session at SoCraTes Linz 2026: creating audiovisual experiences using agents.",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "stills": "node scripts/stills.mjs",
+    "render": "node scripts/render.mjs",
+    "music": "node scripts/render-music.mjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25.12.0"
+  }
+}
