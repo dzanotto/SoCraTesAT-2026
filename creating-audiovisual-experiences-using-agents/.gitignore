@@ -1,0 +1,9 @@
+node_modules/
+out/
+.DS_Store
+
+# generated: npm run music (or exported from strudel.cc)
+music/*.wav
+
+# reference videos downloaded for inspiration (third-party content)
+/*.mp4
